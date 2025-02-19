@@ -3,12 +3,14 @@
 #include <set>
 #include <sstream>
 #include <vector>
+#include <map>
 #include <iomanip>
 #include <algorithm>
 #include "product.h"
 #include "db_parser.h"
 #include "product_parser.h"
 #include "util.h"
+#include "mydatastore.h"
 
 using namespace std;
 struct ProdNameSorter {
@@ -29,7 +31,7 @@ int main(int argc, char* argv[])
      * Declare your derived DataStore object here replacing
      *  DataStore type to your derived type
      ****************/
-    DataStore ds;
+    MyDataStore ds;
 
 
 
@@ -49,6 +51,13 @@ int main(int argc, char* argv[])
     if( parser.parse(argv[1], ds) ) {
         cerr << "Error parsing!" << endl;
         return 1;
+    }
+    map<string, vector<Product*>> cart;
+    map<string, User*> amazon_users;
+    vector<User*> a_users = ds.get_Users();
+    for(unsigned int i =0; i < a_users.size();i++){
+      cart[a_users[i]->getName()] = vector<Product*>();
+      amazon_users[a_users[i]->getName()] = a_users[i];
     }
 
     cout << "=====================================" << endl;
@@ -100,8 +109,67 @@ int main(int argc, char* argv[])
                 done = true;
             }
 	    /* Add support for other commands here */
-
-
+            else if (cmd == "ADD"){
+                string username;
+                int search_hit_number;
+                if(!(ss >> username)){
+                    cout << "Invalid request" << endl;
+                }
+                else if (!(ss >> search_hit_number)){
+                    cout << "Invalid request" << endl;
+                }
+                else{
+                    map<string, vector<Product*>>::iterator it;
+                    it = cart.find(username);
+                    if(it == cart.end() || search_hit_number > hits.size() || search_hit_number <= 0){
+                        cout << "Invalid request" << endl;
+                    }else{
+                        it -> second.push_back(hits[search_hit_number - 1]);
+                    }
+                }
+            }
+            else if (cmd == "VIEWCART"){
+                string username;
+                if(!(ss >> username)){
+                    cout << "Invalid username" << endl;
+                }
+                else{
+                    map<string, vector<Product*>>::iterator it;
+                    it = cart.find(username);
+                    if(it == cart.end()){
+                        cout << "Invalid username" << endl;
+                    }else{
+                        for(int i = 0; i < it -> second.size(); i++){
+                            cout << "Item " << i+1 <<endl;
+                            cout << (it -> second)[i] -> displayString() << endl;
+                        }                        
+                    }
+                }
+            }
+            else if (cmd == "BUYCART"){
+                string username;
+                if(!(ss >> username)){
+                    cout << "Invalid username" << endl;
+                }
+                else{
+                    map<string, vector<Product*>>::iterator it;
+                    map<string, User*>::iterator uit;
+                    it = cart.find(username);
+                    uit = amazon_users.find(username);
+                    if(it == cart.end()){
+                        cout << "Invalid username" << endl;
+                    }else{
+                        for(int i = 0; i < it -> second.size(); i++){
+                            if(uit->second->getBalance() >= it->second[i] -> getPrice() && it->second[i] -> getQty() >= 1){
+                              it->second[i] -> subtractQty(1);
+                              uit->second-> deductAmount(it->second[i] -> getPrice());
+                              it->second.erase(it->second.begin() + i);
+                              i--;
+                            }
+                        }                        
+                    }
+                }
+            }
 
 
             else {
@@ -110,6 +178,7 @@ int main(int argc, char* argv[])
         }
 
     }
+
     return 0;
 }
 
@@ -120,7 +189,7 @@ void displayProducts(vector<Product*>& hits)
     	cout << "No results found!" << endl;
     	return;
     }
-    std::sort(hits.begin(), hits.end(), ProdNameSorter());
+    sort(hits.begin(), hits.end(), ProdNameSorter());
     for(vector<Product*>::iterator it = hits.begin(); it != hits.end(); ++it) {
         cout << "Hit " << setw(3) << resultNo << endl;
         cout << (*it)->displayString() << endl;
